@@ -19,6 +19,72 @@ It does all of this using **five AI agents** that talk to each other over the ne
 
 ---
 
+## Understanding JSON-RPC
+
+Before diving into A2A, it helps to understand **JSON-RPC** — the communication protocol the agents use to talk to each other.
+
+### What is RPC?
+
+**RPC (Remote Procedure Call)** means calling a function on another machine as if it were a local function call. Instead of:
+```python
+result = market_scanner.scan("OpenAI")   # local call
+```
+you send a message over HTTP to a remote server that runs the function and sends back the result.
+
+### What is JSON-RPC?
+
+**JSON-RPC** is a standard that defines exactly how to format those messages using JSON. Every request looks like this:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tasks/send",
+  "id": "abc-123",
+  "params": {
+    "message": {
+      "role": "user",
+      "parts": [{ "text": "Analyze OpenAI" }]
+    }
+  }
+}
+```
+
+And every response looks like this:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "abc-123",
+  "result": {
+    "status": { "state": "completed" },
+    "artifacts": [{ "parts": [{ "text": "**MARKET SCAN**\n..." }] }]
+  }
+}
+```
+
+Key fields:
+- `"jsonrpc": "2.0"` — always present, identifies the protocol version
+- `"method"` — the name of the remote function to call (e.g. `tasks/send`, `tasks/get`)
+- `"id"` — a unique ID so you can match responses to requests (important for async)
+- `"params"` — the arguments to pass to the function
+- `"result"` — the return value (present on success)
+- `"error"` — error details (present on failure, instead of `result`)
+
+### Why JSON-RPC instead of plain REST?
+
+| REST | JSON-RPC |
+|---|---|
+| Multiple URLs (`/tasks`, `/tasks/{id}`, `/results`) | Single URL (`/`), method name in body |
+| HTTP verbs carry meaning (GET, POST, DELETE) | Everything is POST, action is in `"method"` |
+| Good for resource-based APIs (CRUD) | Good for action-based APIs (do this task) |
+
+Agents are action-oriented ("run this task", "get task status") not resource-oriented, so JSON-RPC is a natural fit.
+
+### How it works in this project
+
+The host agent sends a JSON-RPC request to each specialist's `POST /` endpoint. The specialist processes the task (runs Gemini + Google Search) and returns a JSON-RPC response. The `a2a-sdk` library handles all the formatting — you never write raw JSON-RPC manually. The A2A protocol is built on top of JSON-RPC and adds the Agent Card discovery mechanism on top.
+
+---
+
 ## The Core Concept: Agent-to-Agent (A2A) Communication
 
 Traditional AI apps have one model doing everything. This project uses **A2A (Agent-to-Agent) protocol** — a Google open standard where:
